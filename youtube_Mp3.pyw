@@ -12,6 +12,16 @@ Firefox: sigue la referencia de VentanaVerificacion de las preferencias de Gusta
 import subprocess
 import sys
 import os
+# Para que la PC no se trabe: los cálculos de librosa/numpy usan 1 solo hilo
+# (por defecto usan TODOS los núcleos) y el programa corre con prioridad baja.
+for _v in ("NUMBA_NUM_THREADS", "OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
+    os.environ.setdefault(_v, "1")
+if sys.platform == "win32":
+    try:
+        import ctypes as _ct
+        _ct.windll.kernel32.SetPriorityClass(_ct.windll.kernel32.GetCurrentProcess(), 0x00004000)  # BELOW_NORMAL
+    except Exception:
+        pass
 import re
 import json
 import time
@@ -555,7 +565,7 @@ def _parsear_duracion_texto(texto):
 PATRON_BPM_INICIO = re.compile(r"^\s*\[(\d+)\s*BPM\]", re.IGNORECASE)
 PATRON_BPM_CUALQUIER_LADO = re.compile(r"\[(\d+)\s*BPM\]", re.IGNORECASE)
 def _flags_win():
-    return 0x08000000 if sys.platform == "win32" else 0
+    return (0x08000000 | 0x00004000) if sys.platform == "win32" else 0
 def _ruta_ffmpeg_exe():
     ffmpeg_dir = obtener_ruta_ffmpeg()
     if ffmpeg_dir:
@@ -3671,7 +3681,7 @@ class DownloaderIA:
         self.predictor.avisar_estado_inicial()
         self.avisar_estado_antisuplantacion()
         self.avisar_runtime_js()
-        threading.Thread(target=calentar_analisis, daemon=True).start()
+        self.root.after(25000, lambda: threading.Thread(target=calentar_analisis, daemon=True).start())
         self._asegurar_sesion_firefox()
         self.root.after(1500, self._ofrecer_reanudar)
         self._guardar_memoria_periodica()
