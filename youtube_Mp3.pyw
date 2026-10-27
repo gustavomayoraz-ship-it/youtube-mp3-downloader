@@ -3630,6 +3630,23 @@ class CampoBusqueda(tk.Frame):
         self._entry.insert(0, v)
         self._entry.focus_set()
 
+_PALABRAS_RELLENO = {"el", "la", "los", "las", "un", "una", "de", "del", "y", "e", "en", "por", "con",
+                     "cantante", "cantantes", "artista", "banda", "grupo", "conjunto", "musica", "cancion",
+                     "canciones", "temas", "tema", "exitos", "mejores", "oficial", "official", "video"}
+def coincide_consulta(consulta_norm, *textos_norm):
+    """Búsqueda exacta tolerante: vale si el texto completo aparece en el título
+    o el canal, o si aparecen TODAS las palabras importantes (se ignoran
+    rellenos como "el cantante": 'kino el cantante' encuentra a 'Kino')."""
+    if not consulta_norm:
+        return True
+    junto = " ".join(t for t in textos_norm if t)
+    if any(consulta_norm in t for t in textos_norm if t):
+        return True
+    claves = [w for w in consulta_norm.split() if w not in _PALABRAS_RELLENO]
+    if not claves:
+        return False
+    palabras = set(junto.split())
+    return all(w in palabras or (len(w) >= 4 and w in junto) for w in claves)
 class LoggerYtDlp:
     def __init__(self, app):
         self.app = app
@@ -4183,8 +4200,8 @@ class DownloaderIA:
                 titulo = e.get("title", "sin título")
                 canal = e.get("channel") or e.get("uploader") or ""
                 if query_norm:
-                    coincide = (query_norm in _normalizar_para_comparar_nombre(titulo)
-                                or query_norm in _normalizar_para_comparar_nombre(canal))
+                    coincide = coincide_consulta(query_norm, _normalizar_para_comparar_nombre(titulo),
+                                                 _normalizar_para_comparar_nombre(canal))
                     if not coincide:
                         continue
                 if self.var_solo_estudio.get() and es_version_dudosa(titulo, query_norm):
@@ -4366,15 +4383,15 @@ class DownloaderIA:
                 continue
             if c["dur"] and tope_tema and c["dur"] > tope_tema:
                 continue
-            if exigir_nombre and consulta_norm not in titulo_norm \
-                    and consulta_norm not in _normalizar_para_comparar_nombre(c["artistas"]):
+            if exigir_nombre and not coincide_consulta(consulta_norm, titulo_norm,
+                                                       _normalizar_para_comparar_nombre(c["artistas"])):
                 continue
             estudio = self.var_solo_estudio.get()
             tipo = c.get("tipo")
             # Si el nombre buscado es justamente el autor/canal del video, es del
             # propio autor: no se lo trata como "casero" aunque YouTube lo
             # marque como subido por usuario (UGC).
-            del_autor = bool(exigir_nombre) and consulta_norm in _normalizar_para_comparar_nombre(c["artistas"])
+            del_autor = bool(exigir_nombre) and coincide_consulta(consulta_norm, _normalizar_para_comparar_nombre(c["artistas"]))
             if estudio and not del_autor:
                 # Videos subidos por cualquiera (UGC) o de origen desconocido
                 # que solo salieron de la búsqueda de "videos": es de donde
@@ -4558,8 +4575,8 @@ class DownloaderIA:
                 titulo = e.get("title", "")
                 canal = e.get("channel") or e.get("uploader") or ""
                 if query_norm:
-                    coincide = (query_norm in _normalizar_para_comparar_nombre(titulo)
-                                or query_norm in _normalizar_para_comparar_nombre(canal))
+                    coincide = coincide_consulta(query_norm, _normalizar_para_comparar_nombre(titulo),
+                                                 _normalizar_para_comparar_nombre(canal))
                     if not coincide:
                         continue
                 semilla = {"id": vid, "title": titulo}
