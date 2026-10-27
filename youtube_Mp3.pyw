@@ -4159,6 +4159,32 @@ class DownloaderIA:
         self.memoria["historial_busquedas"] = historial
         guardar_memoria(self.memoria)
         self.entry_busqueda["values"] = historial
+    def _buscar_entradas_youtube(self, ydl_opts, consulta, cantidad):
+        """Resultados de búsqueda de YouTube. Si 'ytsearchN:' devuelve 0
+        (pasa con algunas consultas, ej. noticieros/programas en vivo), se
+        reintenta con la página de resultados filtrada a 'Videos'."""
+        import yt_dlp
+        from urllib.parse import quote_plus
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(f"ytsearch{cantidad}:{consulta}", download=False)
+        entradas = [e for e in ((info or {}).get("entries") or []) if e]
+        if entradas:
+            return entradas
+        self.debug(f"🔁 La búsqueda directa no devolvió nada: pruebo con el listado de 'Videos' de YouTube")
+        opts = dict(ydl_opts)
+        opts["playlistend"] = cantidad
+        for sp in ("EgIQAQ%3D%3D", ""):
+            url = f"https://www.youtube.com/results?search_query={quote_plus(consulta)}" + (f"&sp={sp}" if sp else "")
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                entradas = [e for e in ((info or {}).get("entries") or []) if e]
+            except Exception as e:
+                self.debug(f"⚠️ Falló el listado alternativo: {str(e)[:100]}")
+                entradas = []
+            if entradas:
+                return entradas
+        return []
     def _buscar_thread(self, query):
         """
         Busca en YouTube, pero filtrando por "autor/nombre exacto": no
@@ -4186,9 +4212,7 @@ class DownloaderIA:
             # primeros resultados de YouTube (que solo matchean por palabra
             # suelta) van a quedar afuera.
             cantidad_pedir = min(max(cantidad * 5, cantidad + 10), 100)
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(f"ytsearch{cantidad_pedir}:{query}", download=False)
-            entradas = info.get("entries", []) if info else []
+            entradas = self._buscar_entradas_youtube(ydl_opts, query, cantidad_pedir)
             encontrados = []
             for e in entradas:
                 if not e:
@@ -4562,9 +4586,7 @@ class DownloaderIA:
             # Paso 1: encontrar el video "semilla" a partir del cual armar
             # el Mix - el primer resultado que matchea de verdad lo
             # tipeado, para no terminar armando un Mix de cualquier cosa.
-            with yt_dlp.YoutubeDL(ydl_opts_base) as ydl:
-                info_busqueda = ydl.extract_info(f"ytsearch10:{query}", download=False)
-            entradas_busqueda = info_busqueda.get("entries", []) if info_busqueda else []
+            entradas_busqueda = self._buscar_entradas_youtube(ydl_opts_base, query, 10)
             semilla = None
             for e in entradas_busqueda:
                 if not e:
