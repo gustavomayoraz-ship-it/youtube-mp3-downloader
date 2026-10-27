@@ -4165,15 +4165,15 @@ class DownloaderIA:
         anda): se reintenta unas veces y, si sigue vacío, se pide a YouTube
         Music (otro servidor) la lista de videos."""
         import yt_dlp
-        for intento in range(3):
+        for intento in range(2):
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(f"ytsearch{cantidad}:{consulta}", download=False)
             entradas = [e for e in ((info or {}).get("entries") or []) if e]
             if entradas:
                 return entradas
-            if intento < 2:
-                self.debug(f"🔁 La búsqueda no devolvió nada (intento {intento + 1}/3): reintento en unos segundos")
-                time.sleep(3 + intento * 2)
+            if intento < 1:
+                self.debug("🔁 La búsqueda no devolvió nada (intento 1/2): reintento en unos segundos")
+                time.sleep(3)
         self.debug("🔁 Sigue vacío: pido los videos a YouTube Music")
         try:
             yt_music = self._crear_ytmusic()
