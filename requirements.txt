@@ -1,5 +1,6 @@
 # Dependencias de YouTube IA Downloader (misma lista que config/dependencias_youtube.py)
 yt-dlp
+yt-dlp-ejs
 curl_cffi
 librosa
 numpy

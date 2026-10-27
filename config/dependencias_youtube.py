@@ -34,6 +34,9 @@ correspondiente en VentanaVerificacion, dentro de youtube_Mp3.pyw.
 
 DEPENDENCIAS = [
     ("yt-dlp", "yt_dlp"),
+    # Resuelve los desafios de firma de YouTube (junto con deno). Sin esto
+    # solo se ven "imagenes" y las descargas fallan.
+    ("yt-dlp-ejs", "yt_dlp_ejs"),
     # curl_cffi firma el handshake TLS como un navegador real
     # (impersonate). Si no está, el programa sigue andando igual:
     # simplemente no usa la suplantación.

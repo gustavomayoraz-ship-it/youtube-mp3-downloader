@@ -6,8 +6,8 @@ Que hace
 Prepara YouTube MP3 en UNA carpeta, sin que tengas que instalar Python:
   1) Python 3.14 portable COMPLETO (con Tkinter y pip), bajado de NuGet. No necesita administrador.
   2) El codigo del programa (desde GitHub).
-  3) ffmpeg y ffprobe.
-  4) Las librerias: yt-dlp, curl_cffi, librosa, numpy, soundfile, scipy, rapidfuzz, ytmusicapi.
+  3) ffmpeg y ffprobe, y Deno (el interprete de JavaScript que yt-dlp necesita para resolver los desafios de YouTube).
+  4) Las librerias: yt-dlp, yt-dlp-ejs, curl_cffi, librosa, numpy, soundfile, scipy, rapidfuzz, ytmusicapi.
 Despues crea accesos directos (Escritorio y menu Inicio) y abre el programa.
 Si ya esta todo instalado, abre el programa directo, sin ventana.
 Firefox no lo instala este instalador: el programa mismo lo verifica y ofrece instalarlo.

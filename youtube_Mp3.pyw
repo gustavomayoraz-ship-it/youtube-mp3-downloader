@@ -46,6 +46,19 @@ def ruta_config(archivo):
     if not os.path.exists(config_dir):
         os.makedirs(config_dir)
     return os.path.join(config_dir, archivo)
+def _preparar_entorno_js():
+    """yt-dlp necesita un intérprete de JavaScript (deno, por defecto) más el
+    paquete yt-dlp-ejs para resolver los desafíos de firma de YouTube. Sin eso
+    solo ve "imágenes" y todas las descargas fallan con "Requested format is
+    not available". Si el instalador dejó un deno portable en la carpeta del
+    programa, se lo pone al principio del PATH para que yt-dlp lo encuentre."""
+    for sub in ("deno", os.path.join("deno", "bin")):
+        carpeta = os.path.join(ruta_base(), sub)
+        if os.path.exists(os.path.join(carpeta, "deno.exe")):
+            os.environ["PATH"] = carpeta + os.pathsep + os.environ.get("PATH", "")
+            return carpeta
+    return None
+RUTA_DENO_LOCAL = _preparar_entorno_js()
 def cargar_config_app():
     defecto = {
         "usar_firefox_exclusivo": True,
@@ -2348,6 +2361,7 @@ def _cargar_lista_dependencias():
         return None
 DEPENDENCIAS = _cargar_lista_dependencias() or [
     ("yt-dlp", "yt_dlp"),
+    ("yt-dlp-ejs", "yt_dlp_ejs"),
     ("curl_cffi", "curl_cffi"),
     ("librosa", "librosa"),
     ("numpy", "numpy"),
@@ -3635,6 +3649,7 @@ class DownloaderIA:
         self._construir_ui()
         self.predictor.avisar_estado_inicial()
         self.avisar_estado_antisuplantacion()
+        self.avisar_runtime_js()
         self._asegurar_sesion_firefox()
         self.root.after(1500, self._ofrecer_reanudar)
         self._guardar_memoria_periodica()
@@ -3964,6 +3979,21 @@ class DownloaderIA:
         self.memoria["cookies_renovadas"] = datetime.now().isoformat()
         guardar_memoria(self.memoria)
         invalidar_cache_cookies_firefox()
+    def avisar_runtime_js(self):
+        """Avisa si falta el intérprete de JavaScript que yt-dlp necesita."""
+        import shutil
+        try:
+            import yt_dlp_ejs  # noqa: F401
+            ejs = True
+        except Exception:
+            ejs = False
+        if shutil.which("deno"):
+            self.debug("🧩 JavaScript: deno encontrado" + (" (carpeta del programa)" if RUTA_DENO_LOCAL else "")
+                       + ("" if ejs else " -- pero falta el paquete yt-dlp-ejs"))
+        else:
+            self.warning("⚠️ No se encontró deno (el intérprete de JavaScript que yt-dlp necesita para YouTube): "
+                         "muchas descargas van a fallar con 'Requested format is not available'. "
+                         "Instalalo con el instalador del programa o con: winget install DenoLand.Deno")
     def avisar_estado_antisuplantacion(self):
         """Cuenta con qué identidad le va a pedir las cosas a YouTube."""
         nav = (navegadores_disponibles_para_cookies(self.memoria) or [None])[0]

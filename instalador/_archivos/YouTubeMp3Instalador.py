@@ -54,13 +54,15 @@ EXCLUIR_AL_ACTUALIZAR = {"musica", "ffmpeg", "cache_yt_dlp", "dependencias_offli
                          "instalador", "docs", ".git", "backup", "config_usuario"}
 
 # (nombre en pip, nombre para importar): las librerías de ESTE programa (mismas que config/dependencias_youtube.py)
-DEPENDENCIAS = [("yt-dlp", "yt_dlp"), ("curl_cffi", "curl_cffi"), ("librosa", "librosa"), ("numpy", "numpy"),
+DEPENDENCIAS = [("yt-dlp", "yt_dlp"), ("yt-dlp-ejs", "yt_dlp_ejs"), ("curl_cffi", "curl_cffi"), ("librosa", "librosa"), ("numpy", "numpy"),
                 ("soundfile", "soundfile"), ("scipy", "scipy"), ("rapidfuzz", "rapidfuzz"), ("ytmusicapi", "ytmusicapi")]
 
 # Requisitos extra que no son librerías pip (fila propia en la ventana)
 FILA_PYTHON = f"Python {PY_SERIE}"
 FILA_CODIGO = "Código"
 FILA_FFMPEG = "ffmpeg"
+FILA_DENO = "Deno (JS)"
+DENO_ZIP = "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip"
 
 CREATE_NO_WINDOW = 0x08000000
 DETACHED_PROCESS = 0x00000008
@@ -118,6 +120,9 @@ class Instalacion:
     def ffmpeg_ok(self) -> bool:
         return (self.ffmpeg_dir / "ffmpeg.exe").is_file() and (self.ffmpeg_dir / "ffprobe.exe").is_file()
 
+    def deno_ok(self) -> bool:
+        return (self.raiz / "deno" / "deno.exe").is_file()
+
     def _marca(self, pip_name: str) -> Path:
         return self.raiz / "config" / (".instalando_" + pip_name)    # existe SOLO mientras se instala ese paquete
 
@@ -131,7 +136,7 @@ class Instalacion:
             return False
 
     def todo_ok(self) -> bool:
-        return (self.python_ok() and self.codigo_ok() and self.ffmpeg_ok()
+        return (self.python_ok() and self.codigo_ok() and self.ffmpeg_ok() and self.deno_ok()
                 and all(self.dep_ok(n, i) for n, i in DEPENDENCIAS))
 
     # ---------- descargas ----------
@@ -399,6 +404,23 @@ class Instalacion:
                     raise
         raise RuntimeError(f"No se pudo bajar ffmpeg ({ultimo}).")
 
+    # ---------- Deno (intérprete de JavaScript que yt-dlp necesita para YouTube) ----------
+    def instalar_deno(self, avance: Callable[[str], None]) -> None:
+        desc = self.raiz / "_descargas"
+        destino = desc / "deno.zip"
+        avance("⬇️ Descargando Deno...")
+        self.descargar(DENO_ZIP, destino, lambda p: avance(f"⬇️ Descargando Deno... {p}%" if p is not None else "⬇️ Descargando Deno..."))
+        carpeta = self.raiz / "deno"
+        carpeta.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(destino) as z:
+            for info in z.infolist():
+                if Path(info.filename).name.lower() == "deno.exe":
+                    with z.open(info) as o, open(carpeta / "deno.exe", "wb") as f:
+                        shutil.copyfileobj(o, f)
+        shutil.rmtree(desc, ignore_errors=True)
+        if not self.deno_ok():
+            raise RuntimeError("No se encontró deno.exe dentro del archivo descargado.")
+
     # ---------- librerías ----------
     def instalar_dependencia(self, nombre: str) -> tuple:
         """pip install <paquete> en el Python del programa. Devuelve (ok, detalle)."""
@@ -547,7 +569,7 @@ class VentanaVerificacion:
 
         # 2. Lista: filas extra (Python, código y ffmpeg, que no son librerías pip) + las dependencias
         self.labels_estado: dict = {}
-        self.filas = ([(FILA_PYTHON, "python"), (FILA_CODIGO, "codigo"), (FILA_FFMPEG, "ffmpeg")]
+        self.filas = ([(FILA_PYTHON, "python"), (FILA_CODIGO, "codigo"), (FILA_FFMPEG, "ffmpeg"), (FILA_DENO, "deno")]
                       + [(n, "pip") for n, _i in DEPENDENCIAS])
         for nombre, _tipo in self.filas:
             fila = tk.Frame(cont, bg="#f8f9fa")
@@ -649,6 +671,8 @@ class VentanaVerificacion:
             ok = self.inst.codigo_ok() and not self.actualizar_codigo
         elif tipo == "ffmpeg":
             ok = self.inst.ffmpeg_ok()
+        elif tipo == "deno":
+            ok = self.inst.deno_ok()
         else:
             ok = self.inst.dep_ok(nombre, dict(DEPENDENCIAS)[nombre])
         if ok:
@@ -667,6 +691,8 @@ class VentanaVerificacion:
                 self.inst.instalar_codigo(lambda t: self._ui(general, text=t))
             elif tipo == "ffmpeg":
                 self.inst.instalar_ffmpeg(lambda t: self._ui(general, text=t))
+            elif tipo == "deno":
+                self.inst.instalar_deno(lambda t: self._ui(general, text=t))
             else:
                 ok2, det = self.inst.instalar_dependencia(nombre)
                 if not ok2 or not self.inst.dep_ok(nombre, dict(DEPENDENCIAS)[nombre]):
@@ -747,7 +773,7 @@ def main(argv: list) -> int:
         inst.registrar_desinstalador()
         inst.lanzar_app()
         return 0
-    win = VentanaVerificacion(inst, actualizar_codigo="--actualizar" in argv)
+    win = VentanaVerificacion(inst, actualizar_codigo=True)       # si hace falta la ventana, de paso se baja la última versión del programa
     win.ventana.mainloop()
     if win.iniciar:
         inst.lanzar_app()
