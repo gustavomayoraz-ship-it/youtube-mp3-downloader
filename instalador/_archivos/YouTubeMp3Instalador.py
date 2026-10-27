@@ -315,6 +315,7 @@ class Instalacion:
             msis = self.sacar_msi_del_exe(exe, avance)
             self._log(f"componentes encontrados: {sorted(msis)}")
             self.extraer_msi(msis, avance)
+            self.asegurar_aislamiento()
             if not (self.site / "pip").is_dir():
                 avance("📦 Instalando pip...")
                 r = self._correr([str(self.py_exe), "-m", "ensurepip", "--upgrade", "--default-pip"], cwd=str(self.py_dir))
@@ -326,6 +327,29 @@ class Instalacion:
             raise RuntimeError("El Python quedó incompleto. Falta: " + ", ".join(self.faltantes_python())
                                + f"\n(El registro está en {self.cache / 'instalador.log'})")
         shutil.rmtree(desc, ignore_errors=True)
+
+    SITECUSTOMIZE = (
+        "# Lo crea el instalador de YouTube MP3: este Python NO debe ver las librerias de otros Python de la PC\n"
+        "# (la carpeta de usuario de site-packages), para que use solo las suyas.\n"
+        "import sys, site\n"
+        "try:\n"
+        "    _u = site.getusersitepackages()\n"
+        "    sys.path[:] = [p for p in sys.path if p != _u]\n"
+        "    site.ENABLE_USER_SITE = False\n"
+        "except Exception:\n"
+        "    pass\n")
+
+    def asegurar_aislamiento(self) -> None:
+        """Pone en Lib\\site-packages un sitecustomize.py que saca del camino la carpeta de usuario de otros Python.
+        Sin esto, pip ve las librerías que ya tenés instaladas en tu Python, dice 'ya instalado' y no instala nada."""
+        try:
+            if self.py_dir.is_dir():
+                self.site.mkdir(parents=True, exist_ok=True)
+                f = self.site / "sitecustomize.py"
+                if not f.is_file() or f.read_text(encoding="utf-8", errors="replace") != self.SITECUSTOMIZE:
+                    f.write_text(self.SITECUSTOMIZE, encoding="utf-8")
+        except OSError:
+            pass
 
     # ---------- código ----------
     def instalar_codigo(self, avance: Callable[[str], None]) -> None:
@@ -378,6 +402,7 @@ class Instalacion:
     # ---------- librerías ----------
     def instalar_dependencia(self, nombre: str) -> tuple:
         """pip install <paquete> en el Python del programa. Devuelve (ok, detalle)."""
+        self.asegurar_aislamiento()
         marca = self._marca(nombre)
         ok, det = False, None
         try:
@@ -645,7 +670,7 @@ class VentanaVerificacion:
             else:
                 ok2, det = self.inst.instalar_dependencia(nombre)
                 if not ok2 or not self.inst.dep_ok(nombre, dict(DEPENDENCIAS)[nombre]):
-                    raise RuntimeError(det or "El paquete se instaló pero no aparece en el Python del programa.")
+                    raise RuntimeError(det or ("pip terminó bien pero el paquete no quedó en la carpeta del programa (" + str(self.inst.site) + ")."))
         except (OSError, RuntimeError, urllib.error.URLError, zipfile.BadZipFile) as e:
             self.errores[nombre] = str(e)
             self._ui(lbl, text="❌ Error -- click acá para ver el detalle", fg="#e74c3c")
@@ -715,6 +740,7 @@ class VentanaVerificacion:
 def main(argv: list) -> int:
     raiz = calcular_raiz(argv)
     inst = Instalacion(raiz)
+    inst.asegurar_aislamiento()
     if inst.todo_ok() and "--ventana" not in argv and "--actualizar" not in argv:       # todo instalado: ni abrir la ventana
         inst.reparar_permisos()
         inst.crear_accesos()
