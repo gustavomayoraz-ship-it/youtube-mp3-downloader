@@ -2693,7 +2693,7 @@ class VentanaTablaMusica:
         self.ventana.title("📊 Tabla de música - duplicados y volumen")
         self.ventana.geometry("940x600")
         self.ventana.minsize(760, 460)
-        self.ventana.configure(bg="#f4f6f7")
+        self.ventana.configure(bg=TEMA["fondo"])
         # Modal: queda siempre por encima de la ventana principal y bloquea
         # la interacción con ella mientras está abierta (transient la ata a
         # la ventana principal, grab_set le saca el foco a todo lo demás).
@@ -2708,25 +2708,45 @@ class VentanaTablaMusica:
             pass
         self.ventana.destroy()
     def _construir_ui(self):
-        top = tk.Frame(self.ventana, bg="#f4f6f7")
-        top.pack(fill="x", padx=14, pady=(14, 6))
-        tk.Label(top, text="📊 Tabla de música", font=("Segoe UI", 13, "bold"),
-                  bg="#f4f6f7", fg="#2c3e50").pack(side="left")
-        self.lbl_carpeta = tk.Label(top, text="(ninguna carpeta seleccionada)", bg="#f4f6f7",
-                                      fg="#7f8c8d", font=("Segoe UI", 8))
+        T = TEMA
+        self.ventana.configure(bg=T["fondo"])
+        # ---------- encabezado ----------
+        top = tk.Frame(self.ventana, bg=T["fondo"])
+        top.pack(fill="x", padx=16, pady=(14, 6))
+        tk.Label(top, text="📊 Tabla de música", font=("Segoe UI", 15, "bold"),
+                 bg=T["fondo"], fg=T["texto"]).pack(side="left")
+        self.lbl_carpeta = tk.Label(top, text="(ninguna carpeta seleccionada)", bg=T["fondo"],
+                                    fg=T["suave"], font=("Segoe UI", 9), anchor="w")
         self.lbl_carpeta.pack(side="left", padx=(16, 0), fill="x", expand=True)
-        tk.Button(top, text="📁 Buscar carpeta", command=self._elegir_carpeta, bg="#2980b9", fg="white",
-                   font=("Segoe UI", 9, "bold"), relief="flat", padx=10, pady=4).pack(side="right")
-        # --- Tabla tipo planilla ---
-        frame_tabla = tk.Frame(self.ventana, bg="#f4f6f7")
-        frame_tabla.pack(fill="both", expand=True, padx=14, pady=(0, 8))
+        BotonRedondeado(top, text="📁 Buscar carpeta", command=self._elegir_carpeta, bg=T["acento"],
+                        padx=16, pady=7, bg_padre=T["fondo"]).pack(side="right")
+        tk.Frame(self.ventana, bg=T["acento2"], height=2).pack(fill="x", padx=16)
+        # ---------- tabla oscura ----------
+        estilo = ttk.Style(self.ventana)
+        try:
+            estilo.theme_use("clam")
+        except tk.TclError:
+            pass
+        estilo.configure("Musica.Treeview", background=T["lista"], fieldbackground=T["lista"],
+                         foreground=T["texto"], rowheight=26, borderwidth=0, font=("Segoe UI", 9),
+                         bordercolor=T["lista"], lightcolor=T["lista"], darkcolor=T["lista"])
+        estilo.map("Musica.Treeview", background=[("selected", T["lista_sel"])],
+                   foreground=[("selected", "#ffffff")])
+        estilo.configure("Musica.Treeview.Heading", background=T["panel2"], foreground=T["texto"],
+                         relief="flat", borderwidth=0, font=("Segoe UI", 9, "bold"), padding=(6, 6),
+                         bordercolor=T["panel2"], lightcolor=T["panel2"], darkcolor=T["panel2"])
+        estilo.map("Musica.Treeview.Heading", background=[("active", T["acento2"])])
+        frame_tabla = tk.Frame(self.ventana, bg=T["lista"], highlightthickness=2,
+                               highlightbackground=T["borde"], highlightcolor=T["borde"])
+        frame_tabla.pack(fill="both", expand=True, padx=16, pady=(12, 8))
         columnas = ("formato", "bpm", "volumen_actual", "volumen_objetivo", "estado", "progreso")
-        self.tabla = ttk.Treeview(frame_tabla, columns=columnas, show="tree headings", selectmode="extended")
+        self.tabla = ttk.Treeview(frame_tabla, columns=columnas, show="tree headings",
+                                  selectmode="extended", style="Musica.Treeview")
         self.tabla.heading("#0", text="Tema")
         self.tabla.heading("formato", text="Formato")
         self.tabla.heading("bpm", text="BPM")
-        self.tabla.heading("volumen_actual", text="Volumen actual (LUFS)")
-        self.tabla.heading("volumen_objetivo", text="Debería estar (LUFS)")
+        self.tabla.heading("volumen_actual", text="Actual (LUFS)")
+        self.tabla.heading("volumen_objetivo", text="Objetivo (LUFS)")
         self.tabla.heading("estado", text="Estado")
         self.tabla.heading("progreso", text="Normalizando...")
         self.tabla.column("#0", width=300, anchor="w")
@@ -2736,7 +2756,7 @@ class VentanaTablaMusica:
         self.tabla.column("volumen_objetivo", width=130, anchor="center")
         self.tabla.column("estado", width=150, anchor="center")
         self.tabla.column("progreso", width=140, anchor="center")
-        sb_y = ttk.Scrollbar(frame_tabla, orient="vertical", command=self.tabla.yview)
+        sb_y = BarraDesplazamiento(frame_tabla, orient="vertical", command=self.tabla.yview)
         self.tabla.configure(yscrollcommand=sb_y.set)
         self.tabla.pack(side="left", fill="both", expand=True)
         sb_y.pack(side="right", fill="y")
@@ -2744,56 +2764,50 @@ class VentanaTablaMusica:
         # siempre entran todas (incluida la barrita de progreso) sin importar
         # el tamaño de la ventana - no hace falta scrollear para el costado.
         self.tabla.bind("<Configure>", self._ajustar_columnas)
-        self.tabla.tag_configure("dup", background="#fce4ec", foreground="#c0392b")
-        self.tabla.tag_configure("mantener", background="#eafaf1", foreground="#1e8449")
-        self.tabla.tag_configure("bajo", background="#fff3e0", foreground="#e67e22")
-        self.tabla.tag_configure("alto", background="#fff3e0", foreground="#e67e22")
-        self.tabla.tag_configure("ok", background="white", foreground="#27ae60")
-        self.tabla.tag_configure("pendiente", background="white", foreground="#7f8c8d")
+        self.tabla.tag_configure("dup", background="#4a1530", foreground="#ff8fa8")
+        self.tabla.tag_configure("mantener", background="#0d3b2e", foreground=T["ok"])
+        self.tabla.tag_configure("bajo", background="#47350f", foreground=T["aviso"])
+        self.tabla.tag_configure("alto", background="#47350f", foreground=T["aviso"])
+        self.tabla.tag_configure("ok", background=T["lista"], foreground=T["ok"])
+        self.tabla.tag_configure("pendiente", background=T["lista"], foreground=T["suave"])
         tk.Label(self.ventana,
-                  text="Tip: click / ctrl+click / shift+click en la tabla para ajustar qué archivos "
-                       "quedan seleccionados antes de eliminar duplicados.",
-                  bg="#f4f6f7", fg="#7f8c8d", font=("Segoe UI", 8)).pack(anchor="w", padx=14)
-        # --- Estado y progreso ---
-        estado_frame = tk.Frame(self.ventana, bg="#f4f6f7")
-        estado_frame.pack(fill="x", padx=14, pady=(6, 0))
-        self.progress = ttk.Progressbar(estado_frame, mode="determinate")
-        self.progress.pack(fill="x", pady=(0, 4))
-        self.lbl_estado = tk.Label(estado_frame, text="Elegí una carpeta para empezar", bg="#f4f6f7",
-                                     fg="#7f8c8d", font=("Segoe UI", 8), anchor="w")
+                 text="Tip: click / ctrl+click / shift+click en la tabla para ajustar qué archivos "
+                      "quedan seleccionados antes de eliminar duplicados.",
+                 bg=T["fondo"], fg=T["suave"], font=("Segoe UI", 8)).pack(anchor="w", padx=16)
+        # ---------- estado y progreso ----------
+        estado_frame = tk.Frame(self.ventana, bg=T["fondo"])
+        estado_frame.pack(fill="x", padx=16, pady=(8, 0))
+        self.progress = BarraProgreso(estado_frame, alto=14, bg=T["fondo"])
+        self.progress.pack(fill="x", pady=(0, 6))
+        self.lbl_estado = tk.Label(estado_frame, text="Elegí una carpeta para empezar", bg=T["fondo"],
+                                   fg=T["suave"], font=("Segoe UI", 9), anchor="w")
         self.lbl_estado.pack(fill="x")
-        # --- Botones de acción ---
-        botones = tk.Frame(self.ventana, bg="#f4f6f7")
-        botones.pack(fill="x", padx=14, pady=(8, 14))
-        self.btn_bpm = tk.Button(
-            botones, text="🎯 Analizar BPM", command=self._analizar_bpm,
-            bg="#27ae60", fg="white", font=("Segoe UI", 9, "bold"), relief="flat",
-            padx=10, pady=6, state="disabled")
-        self.btn_bpm.pack(side="left", padx=(0, 6))
-        self.btn_detectar_dup = tk.Button(
-            botones, text="🔍 Detectar duplicados", command=self._detectar_duplicados,
-            bg="#e67e22", fg="white", font=("Segoe UI", 9, "bold"), relief="flat",
-            padx=10, pady=6, state="disabled")
-        self.btn_detectar_dup.pack(side="left", padx=(0, 6))
-        self.btn_eliminar_dup = tk.Button(
-            botones, text="🗑️ Eliminar duplicados seleccionados", command=self._eliminar_duplicados_seleccionados,
-            bg="#c0392b", fg="white", font=("Segoe UI", 9, "bold"), relief="flat",
-            padx=10, pady=6, state="disabled")
-        self.btn_eliminar_dup.pack(side="left", padx=(0, 6))
-        self.btn_normalizar = tk.Button(
-            botones, text="🔊 Normalizar volumen", command=self._normalizar_volumen_necesarios,
-            bg="#8e44ad", fg="white", font=("Segoe UI", 9, "bold"), relief="flat",
-            padx=10, pady=6, state="disabled")
+        # ---------- botones de acción (redondeados, con hover) ----------
+        botones = tk.Frame(self.ventana, bg=T["fondo"])
+        botones.pack(fill="x", padx=16, pady=(10, 16))
+        def _boton(texto, comando, color, largo, estado="disabled"):
+            b = BotonRedondeado(botones, text=largo, command=comando, bg=color, padx=11, pady=7,
+                                font=("Segoe UI", 9, "bold"), bg_padre=T["fondo"], state=estado)
+            b.config(text=texto)
+            return b
+        self.btn_bpm = _boton("🎯 Analizar BPM", self._analizar_bpm, T["ok"], "⏳ Analizando BPM...")
+        self.btn_bpm.pack(side="left", padx=(0, 8))
+        self.btn_detectar_dup = _boton("🔍 Detectar duplicados", self._detectar_duplicados, T["aviso"], "🔍 Detectar duplicados")
+        self.btn_detectar_dup.config(fg="#2b1a00")
+        self.btn_detectar_dup.pack(side="left", padx=(0, 8))
+        self.btn_eliminar_dup = _boton("🗑️ Eliminar duplicados", self._eliminar_duplicados_seleccionados,
+                                       T["peligro"], "🗑️ Eliminar duplicados")
+        self.btn_eliminar_dup.pack(side="left", padx=(0, 8))
+        self.btn_normalizar = _boton("🔊 Normalizar volumen", self._normalizar_volumen_necesarios,
+                                     T["acento2"], "🔊 Normalizar volumen   ")
         self.btn_normalizar.pack(side="left")
         # Habilitado solo mientras hay una normalización en curso - es la
         # operación más pesada (ffmpeg reprocesando el audio entero de cada
         # tema), así que conviene poder cortarla sin esperar a que termine
         # la tanda completa.
-        self.btn_cancelar_normalizar = tk.Button(
-            botones, text="⏹ Cancelar normalización", command=self._cancelar_normalizacion_click,
-            bg="#95a5a6", fg="white", font=("Segoe UI", 9, "bold"), relief="flat",
-            padx=10, pady=6, state="disabled")
-        self.btn_cancelar_normalizar.pack(side="left", padx=(6, 0))
+        self.btn_cancelar_normalizar = _boton("⏹ Cancelar", self._cancelar_normalizacion_click,
+                                              T["deshab"], "⏹ Cancelar")
+        self.btn_cancelar_normalizar.pack(side="left", padx=(8, 0))
     def _ajustar_columnas(self, event=None):
         """Reparte el ancho disponible de la tabla entre las columnas, para
         que entren todas (incluida la de progreso) sin importar el tamaño
@@ -3138,7 +3152,7 @@ class VentanaTablaMusica:
             return
         self._cancelar_normalizacion.clear()
         self.btn_normalizar.config(state="disabled", text="⏳ Normalizando...")
-        self.btn_cancelar_normalizar.config(state="normal", text="⏹ Cancelar normalización")
+        self.btn_cancelar_normalizar.config(state="normal", text="⏹ Cancelar")
         threading.Thread(target=self._hilo_normalizar, args=(a_procesar,), daemon=True).start()
     def _cancelar_normalizacion_click(self):
         """
@@ -3210,7 +3224,7 @@ class VentanaTablaMusica:
         else:
             self._set_estado(f"✅ Listo: {total} temas normalizados.")
         self.parent.after(0, lambda: self.btn_normalizar.config(state="normal", text="🔊 Normalizar volumen"))
-        self.parent.after(0, lambda: self.btn_cancelar_normalizar.config(state="disabled", text="⏹ Cancelar normalización"))
+        self.parent.after(0, lambda: self.btn_cancelar_normalizar.config(state="disabled", text="⏹ Cancelar"))
     def _actualizar_progreso_fila(self, iid, pct):
         try:
             if iid not in self.filas:
@@ -3340,13 +3354,13 @@ class BotonRedondeado(tk.Canvas):
     state=, bg=, fg=, command=) igual que un tk.Button."""
     def __init__(self, parent, text="", command=None, bg="#00c2ff", fg="#ffffff",
                  font=("Segoe UI", 10, "bold"), radio=16, padx=18, pady=8, bg_padre=None,
-                 state="normal", alto=None):
+                 state="normal", alto=None, ancho=None):
         self._texto, self._comando, self._color, self._fg = text, command, bg, fg
         self._font = tkfont.Font(font=font)
         self._radio, self._estado = radio, state
         self._hover = self._presionado = False
         h = alto or (self._font.metrics("linespace") + 2 * pady)
-        w = self._font.measure(text) + 2 * padx
+        w = ancho or (self._font.measure(text) + 2 * padx)
         super().__init__(parent, width=w, height=h, bg=bg_padre or _bg_de(parent),
                          highlightthickness=0, bd=0,
                          cursor="hand2" if state == "normal" else "arrow")
@@ -3754,10 +3768,20 @@ class DownloaderIA:
         ventana = tk.Toplevel(self.root)
         ventana.title("🖥 Consola")
         ventana.geometry("640x360")
-        ventana.configure(bg="#1e1e1e")
-        self.txt_consola = tk.Text(ventana, bg="#1e1e1e", fg="#d4d4d4", state="disabled",
-                                     font=("Consolas", 9))
-        self.txt_consola.pack(fill="both", expand=True, padx=8, pady=8)
+        ventana.configure(bg=TEMA["fondo"])
+        tk.Label(ventana, text="🖥 Consola", font=("Segoe UI", 12, "bold"), bg=TEMA["fondo"],
+                 fg=TEMA["texto"], anchor="w").pack(fill="x", padx=12, pady=(10, 4))
+        tk.Frame(ventana, bg=TEMA["acento2"], height=2).pack(fill="x", padx=12)
+        marco = tk.Frame(ventana, bg=TEMA["campo"], highlightthickness=2,
+                         highlightbackground=TEMA["borde"], highlightcolor=TEMA["borde"])
+        marco.pack(fill="both", expand=True, padx=12, pady=10)
+        self.txt_consola = tk.Text(marco, bg=TEMA["campo"], fg="#d4d4d4", state="disabled",
+                                     font=("Consolas", 9), relief="flat", bd=0, highlightthickness=0,
+                                     padx=8, pady=6, selectbackground=TEMA["lista_sel"], wrap="word")
+        sb_c = BarraDesplazamiento(marco, orient="vertical", command=self.txt_consola.yview, bg=TEMA["campo"])
+        self.txt_consola.configure(yscrollcommand=sb_c.set)
+        sb_c.pack(side="right", fill="y")
+        self.txt_consola.pack(side="left", fill="both", expand=True)
         # Los tags de color son propios de este widget de Text - como es uno
         # nuevo cada vez que se abre la ventana, hay que volver a registrar
         # todos los colores usados en el historial antes de reinsertarlo.
