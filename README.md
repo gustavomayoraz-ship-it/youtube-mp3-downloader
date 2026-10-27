@@ -12,6 +12,10 @@ Descargador de música de YouTube a MP3 con interfaz de escritorio (Python / Tki
 - Normalización de volumen sin recomprimir.
 - Cola reanudable si se cierra el programa a mitad de una descarga.
 
+## Instalación fácil (sin instalar Python)
+Descargá `YouTubeMp3-Setup.exe` desde la sección **Releases** y abrilo: prepara todo solo (Python portable, ffmpeg y las librerías)
+y crea un acceso directo en el Escritorio. Más detalle en [instalador/_archivos/LEEME.txt](instalador/_archivos/LEEME.txt).
+
 ## Requisitos
 - Windows con Python 3.10 o superior.
 - ffmpeg (carpeta `ffmpeg/` junto al programa).

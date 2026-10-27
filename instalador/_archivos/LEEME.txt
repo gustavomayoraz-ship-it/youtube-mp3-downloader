@@ -1,0 +1,39 @@
+YouTube MP3 - Instalador (lanzador liviano)
+===========================================
+
+Que hace
+--------
+Prepara YouTube MP3 en UNA carpeta, sin que tengas que instalar Python:
+  1) Python 3.13 portable COMPLETO (con Tkinter y pip), bajado de NuGet. No necesita administrador.
+  2) El codigo del programa (desde GitHub).
+  3) ffmpeg y ffprobe.
+  4) Las librerias: yt-dlp, curl_cffi, librosa, numpy, soundfile, scipy, rapidfuzz, ytmusicapi.
+Despues crea accesos directos (Escritorio y menu Inicio) y abre el programa.
+Si ya esta todo instalado, abre el programa directo, sin ventana.
+Firefox no lo instala este instalador: el programa mismo lo verifica y ofrece instalarlo.
+
+Probarlo (sin armar el .exe)
+----------------------------
+  Doble clic en  "Instalar YouTube MP3.bat"
+  Se instala en  %LOCALAPPDATA%\YouTubeMp3  (NO toca tu carpeta de desarrollo).
+  La primera vez baja varios cientos de MB (librosa, scipy, numpy...): tarda unos minutos.
+
+Armar el .exe
+-------------
+  Dentro de _archivos: doble clic en  Construir_exe.bat   ->  queda  _archivos\dist\YouTubeMp3-Setup.exe  (unos 10-15 MB)
+  Ese .exe se sube a GitHub en "Releases" (no dentro del repositorio).
+
+Opciones (se agregan al final del comando o del acceso directo)
+---------------------------------------------------------------
+  --portable        instala en una carpeta "YouTubeMp3" junto al instalador (tambien si existe portable.txt)
+  --carpeta RUTA    instala en esa carpeta
+  --actualizar      vuelve a bajar el codigo desde GitHub (no toca musica, config ni memoria)
+  --ventana         muestra la ventana aunque ya este todo instalado
+
+Quitar la prueba
+----------------
+  _archivos\Quitar_prueba.bat   (borra %LOCALAPPDATA%\YouTubeMp3 y los accesos directos)
+
+Aviso
+-----
+Mira AVISO_LEGAL.md en la raiz del repositorio: el uso indebido es responsabilidad de quien lo usa.

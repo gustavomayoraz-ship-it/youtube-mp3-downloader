@@ -11,7 +11,9 @@ ffmpeg/
 cache_yt_dlp/
 dependencias_offline/
 backup_*/
-instalador/
+instalador/_archivos/dist/
+instalador/_archivos/build/
+instalador/_archivos/*.spec
 
 # Python
 __pycache__/
