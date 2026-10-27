@@ -4160,31 +4160,41 @@ class DownloaderIA:
         guardar_memoria(self.memoria)
         self.entry_busqueda["values"] = historial
     def _buscar_entradas_youtube(self, ydl_opts, consulta, cantidad):
-        """Resultados de búsqueda de YouTube. Si 'ytsearchN:' devuelve 0
-        (pasa con algunas consultas, ej. noticieros/programas en vivo), se
-        reintenta con la página de resultados filtrada a 'Videos'."""
+        """Resultados de búsqueda de YouTube. 'ytsearchN:' a veces devuelve 0
+        de forma intermitente (la misma consulta falla y 10 segundos después
+        anda): se reintenta unas veces y, si sigue vacío, se pide a YouTube
+        Music (otro servidor) la lista de videos."""
         import yt_dlp
-        from urllib.parse import quote_plus
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(f"ytsearch{cantidad}:{consulta}", download=False)
-        entradas = [e for e in ((info or {}).get("entries") or []) if e]
-        if entradas:
-            return entradas
-        self.debug(f"🔁 La búsqueda directa no devolvió nada: pruebo con el listado de 'Videos' de YouTube")
-        opts = dict(ydl_opts)
-        opts["playlistend"] = cantidad
-        for sp in ("EgIQAQ%3D%3D", ""):
-            url = f"https://www.youtube.com/results?search_query={quote_plus(consulta)}" + (f"&sp={sp}" if sp else "")
-            try:
-                with yt_dlp.YoutubeDL(opts) as ydl:
-                    info = ydl.extract_info(url, download=False)
-                entradas = [e for e in ((info or {}).get("entries") or []) if e]
-            except Exception as e:
-                self.debug(f"⚠️ Falló el listado alternativo: {str(e)[:100]}")
-                entradas = []
+        for intento in range(3):
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(f"ytsearch{cantidad}:{consulta}", download=False)
+            entradas = [e for e in ((info or {}).get("entries") or []) if e]
             if entradas:
                 return entradas
-        return []
+            if intento < 2:
+                self.debug(f"🔁 La búsqueda no devolvió nada (intento {intento + 1}/3): reintento en unos segundos")
+                time.sleep(3 + intento * 2)
+        self.debug("🔁 Sigue vacío: pido los videos a YouTube Music")
+        try:
+            yt_music = self._crear_ytmusic()
+            res = yt_music.search(consulta, filter="videos", limit=min(cantidad, 50)) or []
+            salida = []
+            for r in res:
+                vid = r.get("videoId")
+                if not vid:
+                    continue
+                canal = ", ".join(a.get("name", "") for a in (r.get("artists") or []) if a.get("name"))
+                salida.append({
+                    "id": vid,
+                    "url": f"https://www.youtube.com/watch?v={vid}",
+                    "title": r.get("title") or "sin título",
+                    "channel": canal,
+                    "duration": r.get("duration_seconds") or _parsear_duracion_texto(r.get("duration")) or 0,
+                })
+            return salida
+        except Exception as e:
+            self.debug(f"⚠️ YouTube Music tampoco respondió: {str(e)[:100]}")
+            return []
     def _buscar_thread(self, query):
         """
         Busca en YouTube, pero filtrando por "autor/nombre exacto": no
