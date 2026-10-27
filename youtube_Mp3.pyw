@@ -615,11 +615,11 @@ def extraer_bpm(ruta_archivo):
             os.remove(wav_temporal)
         except Exception:
             pass
-    tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
+    tempo, _ = librosa.beat.beat_track(y=y, sr=sr, start_bpm=100)
     try:
-        return int(round(float(tempo)))
+        return _corregir_octava_bpm(int(round(float(tempo))))
     except Exception:
-        return int(round(float(tempo[0]))) if hasattr(tempo, "__len__") else 0
+        return _corregir_octava_bpm(int(round(float(tempo[0])))) if hasattr(tempo, "__len__") else 0
 # --- Tonalidad (clave) en notación Camelot, para mezclar armónicamente ---
 # Método Krumhansl-Schmuckler: se compara el "perfil de notas" promedio del
 # tema con los perfiles típicos de las 24 tonalidades. Es un estimado (acierta
@@ -643,6 +643,26 @@ def _clave_camelot(chroma_medio):
             if c > mejor_corr:
                 mejor_corr, mejor_clave = c, f"{tabla[tonica]}{letra}"
     return mejor_clave
+def _corregir_octava_bpm(bpm):
+    """librosa a veces detecta el doble o la mitad del tempo real (ej. una
+    cumbia de 92 BPM sale como 185). Se lleva al rango habitual de baile."""
+    if not bpm or bpm <= 0:
+        return bpm
+    while bpm > 175:
+        bpm = int(round(bpm / 2))
+    while bpm < 70:
+        bpm = int(round(bpm * 2))
+    return bpm
+def calentar_analisis():
+    """Compila una vez (en segundo plano) las rutinas numba de librosa, que
+    la primera vez tardan ~30 s, así el primer tema ya no espera."""
+    try:
+        import numpy as np, librosa
+        y = np.random.RandomState(0).randn(22050 * 6).astype("float32") * 0.1
+        librosa.beat.beat_track(y=y, sr=22050)
+        librosa.feature.chroma_cqt(y=librosa.effects.harmonic(y), sr=22050)
+    except Exception:
+        pass
 def analizar_audio(ruta_archivo):
     """Devuelve (bpm, clave_camelot) cargando el audio UNA sola vez. La
     clave puede ser None si no se pudo estimar. Es una función de módulo
@@ -656,11 +676,12 @@ def analizar_audio(ruta_archivo):
             os.remove(wav_temporal)
         except Exception:
             pass
-    tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
+    tempo, _ = librosa.beat.beat_track(y=y, sr=sr, start_bpm=100)
     try:
         bpm = int(round(float(tempo)))
     except Exception:
         bpm = int(round(float(tempo[0]))) if hasattr(tempo, "__len__") else 0
+    bpm = _corregir_octava_bpm(bpm)
     clave = None
     try:
         armonico = librosa.effects.harmonic(y)
@@ -3650,6 +3671,7 @@ class DownloaderIA:
         self.predictor.avisar_estado_inicial()
         self.avisar_estado_antisuplantacion()
         self.avisar_runtime_js()
+        threading.Thread(target=calentar_analisis, daemon=True).start()
         self._asegurar_sesion_firefox()
         self.root.after(1500, self._ofrecer_reanudar)
         self._guardar_memoria_periodica()
@@ -5319,17 +5341,18 @@ class DownloaderIA:
             try:
                 trabajo()
             except Exception as e:
-                self.debug(f"⚙️ Error en el post-proceso: {e}")
+                self.error(f"⚙️ Error en el post-proceso: {e}")
     def _analizar_etiquetar_renombrar(self, ruta_mp3, item):
         """BPM + tonalidad (Camelot) -> etiquetas ID3 (título, artista, álbum,
         TBPM, TKEY) con carátula, sin recodificar -> nombre con [BPM] [clave].
         Cada paso es opcional: si uno falla, los demás siguen."""
         bpm = clave = None
         if self.var_analizar_bpm.get():
+            self.warning("⏳ Analizando BPM y tonalidad (la primera vez tarda ~30 s)...")
             try:
                 bpm, clave = analizar_audio(ruta_mp3)
             except Exception as e:
-                self.debug(f"🎵 Error analizando BPM/tonalidad: {e}")
+                self.error(f"🎵 Error analizando BPM/tonalidad: {e}")
         if self.config_app.get("etiquetas_y_portada", True):
             portada = None
             try:
@@ -5359,8 +5382,9 @@ class DownloaderIA:
         if bpm and bpm > 0:
             try:
                 nueva_ruta = renombrar_con_bpm(ruta_mp3, bpm, clave if TONALIDAD_EN_NOMBRE else None)
-                self.debug(f"🎵 BPM {bpm}" + (f" · tonalidad {clave}" if clave else "") +
-                           f" -> {os.path.basename(nueva_ruta)}")
+                _msg = (f"🎵 BPM {bpm}" + (f" · tonalidad {clave}" if clave else "") +
+                        f" -> {os.path.basename(nueva_ruta)}")
+                self.exito(_msg)
             except Exception as e:
                 self.debug(f"🎵 Error renombrando: {e}")
         elif self.var_analizar_bpm.get():
