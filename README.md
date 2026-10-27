@@ -2,6 +2,8 @@
 
 Descargador de música de YouTube a MP3 con interfaz de escritorio (Python / Tkinter), pensado para DJs.
 
+![Captura de la interfaz](docs/captura.png)
+
 ## Características
 - Máxima calidad de audio disponible.
 - Sistema anti-bloqueo que aprende: ritmo adaptativo, cookies de Firefox automáticas y firma de navegador coherente (impersonate).
