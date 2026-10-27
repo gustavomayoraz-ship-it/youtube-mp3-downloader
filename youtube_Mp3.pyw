@@ -3708,6 +3708,8 @@ class DownloaderIA:
         # Se apaga solo si impersonate falla en esta máquina (ver N07).
         self._impersonate_apagado = False
         self._cola_post = queue.Queue()
+        self._idx_por_id = {}      # id de video -> fila de la lista (para mostrar el avance del post-proceso)
+        self._post_estado = {}     # fila -> estado visible del post-proceso
         self._lock_post = threading.Lock()
         self._hilo_post = None
         self._buscando = False
@@ -4907,6 +4909,7 @@ class DownloaderIA:
                 self.anti_bloqueo.esperar_turno(control_concurrencia._limite_actual(), self._debe_abortar)
                 if self.abortar:
                     return
+                self._idx_por_id[item["id"]] = idx_listbox
                 self._marcar_item(idx_listbox, "descargando")
                 if es_irrecuperable_conocido(self.memoria, item["id"]):
                     self.warning(f"⏭️ Ya sabíamos que este video no está disponible, se salta: {item['title']}")
@@ -4961,6 +4964,7 @@ class DownloaderIA:
                 self.warning("⏹ Descarga detenida por el usuario")
                 break
             self.debug(f"\n--- [{pos + 1}/{total}] {item['title']} ---")
+            self._idx_por_id[item["id"]] = idx_listbox
             self._marcar_item(idx_listbox, "descargando")
             if es_irrecuperable_conocido(self.memoria, item["id"]):
                 self.warning(f"⏭️ Ya sabíamos que este video no está disponible, se salta: {item['title']}")
@@ -5119,6 +5123,7 @@ class DownloaderIA:
             if self.abortar:
                 break
             self.anti_bloqueo.esperar_si_pausado(self._debe_abortar)
+            self._idx_por_id[item["id"]] = idx_listbox
             self._marcar_item(idx_listbox, "descargando")
             ok = self._descargar_uno(item, carpeta)
             if ok:
@@ -5150,6 +5155,8 @@ class DownloaderIA:
         prefijos = {"pendiente": "", "descargando": "⏳ ", "exito": "✅ ", "fallo": "❌ "}
         def _aplicar():
             try:
+                if estado == "exito" and idx in self._post_estado:
+                    return      # se está procesando (volumen, BPM...): esa fila la pinta el post-proceso
                 texto_actual = self.listbox.get(idx)
                 for pre in ("⏳ ", "✅ ", "❌ "):
                     if texto_actual.startswith(pre):
@@ -5405,22 +5412,121 @@ class DownloaderIA:
                 borrar_temporal(archivo_cookies)
         self.error("❌ Se agotaron todos los intentos para este video")
         return False
+    # --- avance visible del post-proceso, sobre la misma fila de la lista ---
+    _ETAPAS_POST = {
+        "En cola": ("⌛", "#475569"),
+        "Normalizando volumen": ("🔊", "#0e7490"),
+        "Analizando BPM": ("🎵", "#6d28d9"),
+        "Etiquetas y carátula": ("🏷️", "#a21caf"),
+        "Renombrando": ("✏️", "#be185d"),
+    }
+    def _post_iniciar(self, item, etapas):
+        idx = self._idx_por_id.get((item or {}).get("id"))
+        if idx is None:
+            return
+        def _ui():
+            try:
+                base = self.listbox.get(idx)
+            except Exception:
+                return
+            for pre in ("⏳ ", "✅ ", "❌ "):
+                if base.startswith(pre):
+                    base = base[len(pre):]
+                    break
+            self._post_estado[idx] = {"item": item, "base": base, "etapas": list(etapas), "paso": 0, "pulso": 0}
+            self._pintar_post(idx)
+            self.root.after(350, lambda: self._animar_post(idx))
+        self.root.after(0, _ui)
+    def _post_paso(self, item, nombre):
+        idx = self._idx_por_id.get((item or {}).get("id"))
+        if idx is None:
+            return
+        def _ui():
+            st = self._post_estado.get(idx)
+            if not st or st["item"] is not item:
+                return
+            if nombre in st["etapas"]:
+                st["paso"] = st["etapas"].index(nombre) + 1
+            st["pulso"] = 0
+            self._pintar_post(idx)
+        self.root.after(0, _ui)
+    def _post_fin(self, item, resumen=""):
+        idx = self._idx_por_id.get((item or {}).get("id"))
+        if idx is None:
+            return
+        def _ui():
+            st = self._post_estado.get(idx)
+            if not st or st["item"] is not item:
+                return
+            self._post_estado.pop(idx, None)
+            try:
+                texto = "✅ " + st["base"] + (f"   ·   {resumen}" if resumen else "")
+                self.listbox.delete(idx)
+                self.listbox.insert(idx, texto)
+                self.listbox.itemconfig(idx, bg="#0b7a4b", fg="white")
+            except Exception:
+                pass
+        self.root.after(0, _ui)
+    def _pintar_post(self, idx):
+        st = self._post_estado.get(idx)
+        if not st:
+            return
+        etapas, paso = st["etapas"], st["paso"]
+        n = max(1, len(etapas))
+        nombre = "En cola" if paso == 0 else etapas[min(paso, n) - 1]
+        icono, color = self._ETAPAS_POST.get(nombre, ("⚙️", "#475569"))
+        celdas = 8
+        base_llenas = 0 if paso == 0 else int(celdas * (paso - 1) / n)
+        ancho = max(1, int(celdas / n))
+        llenas = min(celdas - (1 if paso else 0), base_llenas + (st["pulso"] % (ancho + 1)))
+        barra = "▰" * llenas + "▱" * (celdas - llenas)
+        texto = f"{icono} {barra} {nombre}   ·   {st['base']}"
+        try:
+            self.listbox.delete(idx)
+            self.listbox.insert(idx, texto)
+            self.listbox.itemconfig(idx, bg=color, fg="white")
+        except Exception:
+            pass
+    def _animar_post(self, idx):
+        st = self._post_estado.get(idx)
+        if not st:
+            return
+        st["pulso"] += 1
+        self._pintar_post(idx)
+        self.root.after(350, lambda: self._animar_post(idx))
     def _post_procesar_descarga(self, ruta_mp3, item=None):
         """Corre después de cada descarga, en un solo hilo secuencial para que
         no se pisen entre sí: primero pareja el volumen (si está activado) y
         después analiza BPM y tonalidad, escribe las etiquetas con la
         carátula y renombra (así el volumen ya no toca el archivo una vez que
-        quedó con el nombre final)."""
+        quedó con el nombre final). Cada paso se ve sobre la misma fila de la
+        lista, con su color y una barrita de avance."""
+        etapas = []
+        if self.var_normalizar_volumen.get():
+            etapas.append("Normalizando volumen")
+        if self.var_analizar_bpm.get():
+            etapas.append("Analizando BPM")
+        if self.config_app.get("etiquetas_y_portada", True):
+            etapas.append("Etiquetas y carátula")
+        if self.var_analizar_bpm.get():
+            etapas.append("Renombrando")
+        if etapas:
+            self._post_iniciar(item, etapas)
         def _trabajo():
             ruta_actual = ruta_mp3
-            if self.var_normalizar_volumen.get():
-                try:
-                    normalizar_volumen(ruta_actual)
-                    self.debug("🔊 Volumen normalizado")
-                except Exception as e:
-                    self.debug(f"🔊 Error normalizando volumen: {e}")
-            if os.path.exists(ruta_actual):
-                self._analizar_etiquetar_renombrar(ruta_actual, item or {})
+            resumen = ""
+            try:
+                if self.var_normalizar_volumen.get():
+                    self._post_paso(item, "Normalizando volumen")
+                    try:
+                        normalizar_volumen(ruta_actual)
+                        self.debug("🔊 Volumen normalizado")
+                    except Exception as e:
+                        self.debug(f"🔊 Error normalizando volumen: {e}")
+                if os.path.exists(ruta_actual):
+                    resumen = self._analizar_etiquetar_renombrar(ruta_actual, item or {}) or ""
+            finally:
+                self._post_fin(item, resumen)
         # UN solo hilo para toda la cola de post-proceso. Antes se lanzaba
         # un hilo nuevo por descarga (aunque el texto decía "secuencial"):
         # con 4 descargas en paralelo corrían 4 ffmpeg/librosa a la vez y
@@ -5449,13 +5555,16 @@ class DownloaderIA:
         TBPM, TKEY) con carátula, sin recodificar -> nombre con [BPM] [clave].
         Cada paso es opcional: si uno falla, los demás siguen."""
         bpm = clave = None
+        resumen = ""
         if self.var_analizar_bpm.get():
+            self._post_paso(item, "Analizando BPM")
             self.warning("⏳ Analizando BPM y tonalidad (la primera vez tarda ~30 s)...")
             try:
                 bpm, clave = analizar_audio(ruta_mp3)
             except Exception as e:
                 self.error(f"🎵 Error analizando BPM/tonalidad: {e}")
         if self.config_app.get("etiquetas_y_portada", True):
+            self._post_paso(item, "Etiquetas y carátula")
             portada = None
             try:
                 titulo, artista = datos_etiquetas(item)
@@ -5482,6 +5591,8 @@ class DownloaderIA:
                     except Exception:
                         pass
         if bpm and bpm > 0:
+            self._post_paso(item, "Renombrando")
+            resumen = f"{bpm} BPM" + (f" · {clave}" if clave else "")
             try:
                 nueva_ruta = renombrar_con_bpm(ruta_mp3, bpm, clave if TONALIDAD_EN_NOMBRE else None)
                 _msg = (f"🎵 BPM {bpm}" + (f" · tonalidad {clave}" if clave else "") +
@@ -5491,10 +5602,22 @@ class DownloaderIA:
                 self.debug(f"🎵 Error renombrando: {e}")
         elif self.var_analizar_bpm.get():
             self.debug("🎵 No se pudo determinar el BPM")
+        return resumen
     def _guardar_memoria_periodica(self):
         guardar_memoria(self.memoria)
         self.root.after(60000, self._guardar_memoria_periodica)
     def cerrar(self):
+        pendientes = len(self._post_estado)
+        if pendientes:
+            try:
+                if not messagebox.askyesno(
+                        "Todavía se están procesando temas",
+                        f"Hay {pendientes} tema(s) en proceso (volumen, BPM, etiquetas).\n\n"
+                        "Si cerrás ahora quedan sin renombrar ni etiquetar.\n\n¿Cerrar igual?",
+                        icon="warning", default="no"):
+                    return
+            except Exception:
+                pass
         self.abortar = True
         self._guardar_config_descarga()
         self.anti_bloqueo.guardar_en_memoria()
