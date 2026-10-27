@@ -18,6 +18,7 @@ Uso:
 """
 import os
 import re
+import struct
 import shutil
 import subprocess
 import sys
@@ -43,7 +44,8 @@ DLL_PYTHON = "python" + PY_SERIE.replace(".", "") + "*.dll"
 PY_FTP = "https://www.python.org/ftp/python/"
 PY_EXE_URL = PY_FTP + "{v}/python-{v}-amd64.exe"
 PY_RESPALDO = [f"{PY_SERIE}.{n}" for n in range(15, 0, -1)]   # si no se puede leer el índice de python.org, se prueban estas
-MSI_NECESARIOS = ["core.msi", "exe.msi", "lib.msi", "tcltk.msi"]   # Python + biblioteca estándar + Tkinter
+# Componentes que se descomprimen del instalador oficial: (nombre, texto que aparece en el nombre del producto del .msi)
+MSI_NECESARIOS = [("core", b"Core Interpreter"), ("exe", b"Executables"), ("lib", b"Standard Library"), ("tcltk", b"Tcl/Tk Support")]
 FFMPEG_ZIPS = [
     "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
     "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
@@ -215,16 +217,72 @@ class Instalacion:
                     shutil.move(str(hijo), str(destino))
             break
 
-    def extraer_msi(self, layout: Path, avance: Callable[[str], None]) -> None:
-        """Descomprime los componentes (.msi) con 'msiexec /a' (instalación administrativa: solo extrae, no registra nada)."""
-        msis = {p.name.lower(): p for p in layout.rglob("*.msi")}
-        faltan = [n for n in MSI_NECESARIOS if n not in msis]
+    @staticmethod
+    def cabinas_del_exe(datos: bytes) -> list:
+        """El instalador de Python (WiX Burn) lleva sus componentes en cabinas (.cab) pegadas dentro del propio .exe.
+        Devuelve [(desde, hasta)] de cada cabina válida, la más grande primero (esa es la de los componentes)."""
+        out = []
+        for m in re.finditer(b"MSCF\x00\x00\x00\x00", datos):
+            o = m.start()
+            if o + 36 > len(datos):
+                continue
+            tam = struct.unpack_from("<I", datos, o + 8)[0]
+            if 1_000_000 < tam and o + tam <= len(datos):
+                out.append((o, o + tam))
+        return sorted(out, key=lambda t: t[1] - t[0], reverse=True)
+
+    @staticmethod
+    def identificar_msi(datos: bytes) -> Optional[str]:
+        """Qué componente es este archivo (core, exe, lib, tcltk) según el nombre de producto guardado en el .msi."""
+        if datos[:4] != bytes.fromhex("d0cf11e0"):
+            return None
+        for nombre, clave in MSI_NECESARIOS:
+            if clave in datos:
+                return nombre
+        return None
+
+    def _expandir_cab(self, cab: Path, destino: Path) -> subprocess.CompletedProcess:
+        destino.mkdir(parents=True, exist_ok=True)
+        if os.name == "nt":
+            return self._correr(["expand.exe", str(cab), "-F:*", str(destino)])     # expand.exe viene con Windows
+        return self._correr(["cabextract", "-q", "-d", str(destino), str(cab)])    # (solo para las pruebas en Linux)
+
+    def sacar_msi_del_exe(self, exe: Path, avance: Callable[[str], None]) -> dict:
+        """Extrae del instalador los .msi de los componentes necesarios. Devuelve {nombre: ruta}."""
+        avance("📦 Abriendo el instalador de Python...")
+        datos = exe.read_bytes()
+        trabajo = exe.parent / "componentes"
+        encontrados: dict = {}
+        for n, (desde, hasta) in enumerate(self.cabinas_del_exe(datos)):
+            cab = exe.parent / f"contenedor{n}.cab"
+            cab.write_bytes(datos[desde:hasta])
+            carpeta = trabajo / str(n)
+            r = self._expandir_cab(cab, carpeta)
+            self._log(f"expand contenedor{n} -> {r.returncode} {r.stdout[-200:]}")
+            for f in sorted(carpeta.iterdir()) if carpeta.is_dir() else []:
+                if f.is_file() and f.stat().st_size > 10_000:
+                    with open(f, "rb") as fh:
+                        cabecera = fh.read(4)
+                    if cabecera != bytes.fromhex("d0cf11e0"):
+                        continue
+                    nombre = self.identificar_msi(f.read_bytes())
+                    if nombre and nombre not in encontrados:
+                        encontrados[nombre] = f.with_name(f.name + ".msi")
+                        f.rename(encontrados[nombre])
+            if len(encontrados) == len(MSI_NECESARIOS):
+                break
+        return encontrados
+
+    def extraer_msi(self, msis: dict, avance: Callable[[str], None]) -> None:
+        """Descomprime los componentes (.msi) con 'msiexec /a' (instalación administrativa: solo extrae los archivos,
+        no registra nada en Windows ni toca los Python que ya tengas)."""
+        faltan = [n for n, _c in MSI_NECESARIOS if n not in msis]
         if faltan:
-            raise RuntimeError("El instalador de Python no entregó estos componentes: " + ", ".join(faltan))
+            raise RuntimeError("El instalador de Python no tiene estos componentes: " + ", ".join(faltan))
         if self.py_dir.exists():
             shutil.rmtree(self.py_dir, ignore_errors=True)
         self.py_dir.mkdir(parents=True, exist_ok=True)
-        for n in MSI_NECESARIOS:
+        for n, _c in MSI_NECESARIOS:
             avance(f"📦 Descomprimiendo Python ({n})...")
             r = self._correr(["msiexec", "/a", str(msis[n]), "/qn", "/norestart", f"TARGETDIR={self.py_dir}"])
             self._log(f"msiexec /a {n} -> {r.returncode} {r.stdout[-300:]}")
@@ -234,16 +292,6 @@ class Instalacion:
         # los .msi administrativos dejan una copia de sí mismos junto a los archivos: se borra
         for m in self.py_dir.glob("*.msi"):
             m.unlink(missing_ok=True)
-
-    def instalar_silencioso(self, exe: Path, avance: Callable[[str], None]) -> None:
-        """Plan B: el instalador oficial en modo silencioso, solo para este usuario y en la carpeta del programa."""
-        avance("📦 Instalando Python (plan B)...")
-        if self.py_dir.exists():
-            shutil.rmtree(self.py_dir, ignore_errors=True)
-        r = self._correr([str(exe), "/quiet", "InstallAllUsers=0", f"TargetDir={self.py_dir}", "Include_launcher=0",
-                          "Include_test=0", "Include_doc=0", "Include_dev=0", "Include_tcltk=1", "Include_pip=1",
-                          "Shortcuts=0", "AssociateFiles=0", "PrependPath=0", "CompileAll=0"])
-        self._log(f"instalador silencioso -> {r.returncode} {r.stdout[-300:]}")
 
     def instalar_python(self, avance: Callable[[str], None]) -> None:
         desc = self.raiz / "_descargas"
@@ -263,28 +311,19 @@ class Instalacion:
                     raise
         if exe is None:
             raise RuntimeError(f"No se encontró el instalador de Python {PY_SERIE} en python.org ({ultimo})")
-        error = None
         try:
-            avance("📦 Preparando los componentes de Python (puede tardar un minuto)...")
-            layout = desc / "layout"
-            r = self._correr([str(exe), "/layout", str(layout), "/quiet"])
-            self._log(f"layout -> {r.returncode} {r.stdout[-300:]}")
-            self.extraer_msi(layout, avance)
+            msis = self.sacar_msi_del_exe(exe, avance)
+            self._log(f"componentes encontrados: {sorted(msis)}")
+            self.extraer_msi(msis, avance)
             if not (self.site / "pip").is_dir():
                 avance("📦 Instalando pip...")
                 r = self._correr([str(self.py_exe), "-m", "ensurepip", "--upgrade", "--default-pip"], cwd=str(self.py_dir))
                 self._log(f"ensurepip -> {r.returncode} {r.stdout[-300:]}")
-        except (OSError, RuntimeError) as e:
-            if isinstance(e, RuntimeError) and "cancelado" in str(e):
-                raise
-            error = e
-            self._log(f"método 1 falló: {e}")
-        if error is not None or not self.python_ok():
-            self._log(f"faltan tras el método 1: {self.faltantes_python()}")
-            self.instalar_silencioso(exe, avance)
+        except OSError as e:
+            raise RuntimeError(f"No se pudo preparar Python: {e}") from e
         if not self.python_ok():
+            self._log(f"faltan: {self.faltantes_python()}")
             raise RuntimeError("El Python quedó incompleto. Falta: " + ", ".join(self.faltantes_python())
-                               + (f"\nDetalle: {error}" if error else "")
                                + f"\n(El registro está en {self.cache / 'instalador.log'})")
         shutil.rmtree(desc, ignore_errors=True)
 
