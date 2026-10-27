@@ -4570,8 +4570,8 @@ class DownloaderIA:
                 if not e:
                     continue
                 vid = e.get("id") or extraer_video_id(e.get("url", ""))
-                if not vid or es_irrecuperable_conocido(self.memoria, vid):
-                    continue
+                if not vid or len(vid) != 11 or es_irrecuperable_conocido(self.memoria, vid):
+                    continue   # canales (UC...) y playlists no sirven de semilla
                 titulo = e.get("title", "")
                 canal = e.get("channel") or e.get("uploader") or ""
                 if query_norm:
@@ -4584,10 +4584,11 @@ class DownloaderIA:
             if semilla is None and entradas_busqueda:
                 # Nada matcheó exacto - mejor un Mix aproximado que no
                 # traer nada: usamos el primer resultado tal cual.
-                e = entradas_busqueda[0]
-                vid = e.get("id") or extraer_video_id(e.get("url", ""))
-                if vid:
-                    semilla = {"id": vid, "title": e.get("title", "")}
+                for e in entradas_busqueda:
+                    vid = (e or {}).get("id") or extraer_video_id((e or {}).get("url", ""))
+                    if vid and len(vid) == 11:
+                        semilla = {"id": vid, "title": e.get("title", "")}
+                        break
             if semilla is None:
                 self.root.after(0, lambda: self.warning(
                     f"⚠️ No se encontró ningún video para armar el Mix de '{query}'"))
@@ -4623,6 +4624,13 @@ class DownloaderIA:
                 })
                 if len(encontrados) >= cantidad:
                     break
+            if not encontrados:
+                # YouTube no entregó el Mix (suele pasar con bloqueos 429): en
+                # vez de dejar la lista vacía, se muestran los videos que
+                # coinciden con lo buscado.
+                self.warning(f"⚠️ YouTube no entregó el Mix de '{query}': muestro los videos que coinciden")
+                self._buscar_thread(query)
+                return
             self.resultados = encontrados
             def _mostrar():
                 for r in self.resultados:
