@@ -564,6 +564,17 @@ def _parsear_duracion_texto(texto):
 # =====================================================================
 PATRON_BPM_INICIO = re.compile(r"^\s*\[(\d+)\s*BPM\]", re.IGNORECASE)
 PATRON_BPM_CUALQUIER_LADO = re.compile(r"\[(\d+)\s*BPM\]", re.IGNORECASE)
+def _con_reintentos(funcion, *args, intentos=8, espera=0.7):
+    """Windows a veces bloquea un mp3 recién creado unos instantes (antivirus,
+    el Explorador, la vista previa): [WinError 5]/[WinError 32]. Se reintenta
+    varias veces antes de darlo por fallido."""
+    for n in range(intentos):
+        try:
+            return funcion(*args)
+        except (PermissionError, OSError):
+            if n == intentos - 1:
+                raise
+            time.sleep(espera)
 def _flags_win():
     return (0x08000000 | 0x00004000) if sys.platform == "win32" else 0
 def _ruta_ffmpeg_exe():
@@ -715,7 +726,7 @@ def renombrar_con_bpm(ruta_original, bpm, clave=None):
         nueva_ruta = os.path.join(carpeta, candidato)
         contador += 1
     if nueva_ruta != ruta_original:
-        os.rename(ruta_original, nueva_ruta)
+        _con_reintentos(os.rename, ruta_original, nueva_ruta)
     return nueva_ruta
 # --- Etiquetas ID3 + carátula, sin recodificar el audio (ffmpeg -c copy) ---
 def escribir_etiquetas_mp3(ruta, etiquetas, portada=None):
@@ -745,7 +756,7 @@ def escribir_etiquetas_mp3(ruta, etiquetas, portada=None):
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=120, creationflags=_flags_win())
         if r.returncode != 0 or not os.path.exists(temporal) or os.path.getsize(temporal) == 0:
             return False
-        os.replace(temporal, ruta)
+        _con_reintentos(os.replace, temporal, ruta)
         return True
     finally:
         if os.path.exists(temporal):
@@ -854,7 +865,7 @@ def escribir_json_atomico(ruta, datos, indent=4):
             os.fsync(f.fileno())
         except Exception:
             pass
-    os.replace(temporal, ruta)
+    _con_reintentos(os.replace, temporal, ruta)
 # =====================================================================
 # NORMALIZADOR DE VOLUMEN (loudness) - usa el filtro loudnorm de ffmpeg,
 # el mismo estándar (EBU R128) que usan Spotify/YouTube Music para que
@@ -1075,7 +1086,7 @@ def normalizar_volumen(ruta_audio, callback_progreso=None, evento_cancelar=None)
             raise NormalizacionCancelada("Cancelado por el usuario")
         if codigo != 0 or not os.path.exists(temporal) or os.path.getsize(temporal) == 0:
             raise RuntimeError(f"ffmpeg falló al normalizar: {error_texto}")
-        os.replace(temporal, ruta_audio)
+        _con_reintentos(os.replace, temporal, ruta_audio)
         if callback_progreso:
             callback_progreso(100.0)
     finally:
