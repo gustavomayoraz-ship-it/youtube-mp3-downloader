@@ -4,7 +4,7 @@ YouTube MP3 - Instalador (lanzador liviano)
 Que hace
 --------
 Prepara YouTube MP3 en UNA carpeta, sin que tengas que instalar Python:
-  1) Python 3.13 portable COMPLETO (con Tkinter y pip), bajado de NuGet. No necesita administrador.
+  1) Python 3.14 portable COMPLETO (con Tkinter y pip), bajado de NuGet. No necesita administrador.
   2) El codigo del programa (desde GitHub).
   3) ffmpeg y ffprobe.
   4) Las librerias: yt-dlp, curl_cffi, librosa, numpy, soundfile, scipy, rapidfuzz, ytmusicapi.

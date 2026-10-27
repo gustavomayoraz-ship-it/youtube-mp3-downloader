@@ -2,7 +2,7 @@
 rem Arma dist\YouTubeMp3-Setup.exe (el instalador liviano). Necesita internet para bajar PyInstaller.
 cd /d "%~dp0"
 set PYX=
-for %%V in (3.13 3.14 3.12) do (
+for %%V in (3.14 3.13 3.12) do (
   if not defined PYX (
     py -%%V -c "import tkinter" >nul 2>nul && set PYX=py -%%V
   )

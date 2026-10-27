@@ -1,9 +1,9 @@
 @echo off
 title Instalar YouTube MP3
-rem Instala YouTube MP3: baja Python 3.13 portable, ffmpeg, el programa y las librerias. Se instala en %LOCALAPPDATA%\YouTubeMp3
+rem Instala YouTube MP3: baja Python 3.14 portable, ffmpeg, el programa y las librerias. Se instala en %LOCALAPPDATA%\YouTubeMp3
 cd /d "%~dp0_archivos"
 set PYX=
-for %%V in (3.13 3.14 3.12 3.11 3.10) do (
+for %%V in (3.14 3.13 3.12 3.11 3.10) do (
   if not defined PYX (
     py -%%V -c "import tkinter" >nul 2>nul && set PYX=py -%%V
   )

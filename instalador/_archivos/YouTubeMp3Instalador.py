@@ -2,7 +2,7 @@
 YouTube MP3 — Instalador (lanzador).
 
 Prepara todo lo que el programa necesita en UNA carpeta, sin que tengas que instalar Python:
-  1. Python 3.13 portable COMPLETO (con Tkinter y pip): se bajan los componentes oficiales de python.org y se descomprimen
+  1. Python 3.14 portable COMPLETO (con Tkinter y pip): se bajan los componentes oficiales de python.org y se descomprimen
      en la carpeta del programa (no se registra nada en Windows ni hacen falta permisos de administrador).
   2. El código de YouTube MP3 (desde GitHub).
   3. ffmpeg y ffprobe (para convertir a MP3 y analizar el audio).
@@ -38,10 +38,11 @@ NOMBRE_APP = "YouTube MP3"
 CARPETA_APP = "YouTubeMp3"
 SCRIPT_APP = "youtube_Mp3.pyw"
 REPO_ZIP = "https://github.com/gustavomayoraz-ship-it/youtube-mp3-downloader/archive/refs/heads/main.zip"
-PY_SERIE = "3.13"                                        # la misma serie con la que se desarrolló y probó el programa
+PY_SERIE = "3.14"                                        # la misma serie que usa AutoMix (sus librerías ya se probaron ahí)
+DLL_PYTHON = "python" + PY_SERIE.replace(".", "") + "*.dll"
 PY_FTP = "https://www.python.org/ftp/python/"
 PY_EXE_URL = PY_FTP + "{v}/python-{v}-amd64.exe"
-PY_RESPALDO = [f"3.13.{n}" for n in range(15, 4, -1)]   # si no se puede leer el índice de python.org, se prueban estas
+PY_RESPALDO = [f"{PY_SERIE}.{n}" for n in range(15, 0, -1)]   # si no se puede leer el índice de python.org, se prueban estas
 MSI_NECESARIOS = ["core.msi", "exe.msi", "lib.msi", "tcltk.msi"]   # Python + biblioteca estándar + Tkinter
 FFMPEG_ZIPS = [
     "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
@@ -105,7 +106,7 @@ class Instalacion:
 
     # ---------- verificaciones (rápidas, sin ejecutar Python) ----------
     def python_ok(self) -> bool:
-        return (self.py_exe.is_file() and self.pyw_exe.is_file() and any(self.py_dir.glob("python313*.dll"))
+        return (self.py_exe.is_file() and self.pyw_exe.is_file() and any(self.py_dir.glob(DLL_PYTHON))
                 and (self.py_dir / "DLLs" / "_tkinter.pyd").is_file() and (self.py_dir / "tcl").is_dir()
                 and (self.site / "pip").is_dir())
 
@@ -184,12 +185,12 @@ class Instalacion:
                    ("DLLs\\_tkinter.pyd (Tkinter)", self.py_dir / "DLLs" / "_tkinter.pyd"),
                    ("tcl (Tkinter)", self.py_dir / "tcl"), ("pip", self.site / "pip")]
         falta = [n for n, ruta in pedidos if not ruta.exists()]
-        if not any(self.py_dir.glob("python313*.dll")):
-            falta.append("python313.dll")
+        if not any(self.py_dir.glob(DLL_PYTHON)):
+            falta.append(DLL_PYTHON)
         return falta
 
     def _versiones_python(self) -> list:
-        """Versiones 3.13.x publicadas en python.org, de la más nueva a la más vieja."""
+        """Versiones de la serie publicadas en python.org, de la más nueva a la más vieja."""
         try:
             with urllib.request.urlopen(urllib.request.Request(PY_FTP, headers={"User-Agent": "YouTubeMp3-Instalador"}),
                                         timeout=30) as r:
