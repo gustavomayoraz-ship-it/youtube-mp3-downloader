@@ -2,7 +2,8 @@
 YouTube MP3 — Instalador (lanzador).
 
 Prepara todo lo que el programa necesita en UNA carpeta, sin que tengas que instalar Python:
-  1. Python 3.13 portable COMPLETO (con Tkinter y pip), bajado de NuGet (sin instalador, sin permisos de administrador).
+  1. Python 3.13 portable COMPLETO (con Tkinter y pip): se bajan los componentes oficiales de python.org y se descomprimen
+     en la carpeta del programa (no se registra nada en Windows ni hacen falta permisos de administrador).
   2. El código de YouTube MP3 (desde GitHub).
   3. ffmpeg y ffprobe (para convertir a MP3 y analizar el audio).
   4. Las librerías: yt-dlp, curl_cffi, librosa, numpy, soundfile, scipy, rapidfuzz, ytmusicapi.
@@ -15,7 +16,6 @@ Uso:
   YouTubeMp3Instalador.py --actualizar    vuelve a bajar el código desde GitHub (no toca música, config ni memoria)
   YouTubeMp3Instalador.py --ventana       muestra la ventana aunque ya esté todo instalado
 """
-import json
 import os
 import re
 import shutil
@@ -39,9 +39,10 @@ CARPETA_APP = "YouTubeMp3"
 SCRIPT_APP = "youtube_Mp3.pyw"
 REPO_ZIP = "https://github.com/gustavomayoraz-ship-it/youtube-mp3-downloader/archive/refs/heads/main.zip"
 PY_SERIE = "3.13"                                        # la misma serie con la que se desarrolló y probó el programa
-NUGET_INDICE = "https://api.nuget.org/v3-flatcontainer/python/index.json"
-NUGET_PAQUETE = "https://api.nuget.org/v3-flatcontainer/python/{v}/python.{v}.nupkg"
-PY_RESPALDO = [f"3.13.{n}" for n in range(15, 4, -1)]   # si no se puede leer el índice de NuGet, se prueban estas
+PY_FTP = "https://www.python.org/ftp/python/"
+PY_EXE_URL = PY_FTP + "{v}/python-{v}-amd64.exe"
+PY_RESPALDO = [f"3.13.{n}" for n in range(15, 4, -1)]   # si no se puede leer el índice de python.org, se prueban estas
+MSI_NECESARIOS = ["core.msi", "exe.msi", "lib.msi", "tcltk.msi"]   # Python + biblioteca estándar + Tkinter
 FFMPEG_ZIPS = [
     "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
     "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
@@ -85,15 +86,6 @@ def clave_version(v: str) -> tuple:
     return tuple(int(x) for x in v.split("."))
 
 
-def elegir_versiones_python(indice: dict) -> list:
-    """De la lista de NuGet, las versiones estables de la serie (3.13.x), de la más nueva a la más vieja."""
-    out = []
-    for v in indice.get("versions", []):
-        if re.fullmatch(re.escape(PY_SERIE) + r"\.\d+", v):
-            out.append(v)
-    return sorted(out, key=clave_version, reverse=True)
-
-
 # ----------------------------------------------------------------------------------------------------
 # Lógica de instalación (sin ventana)
 # ----------------------------------------------------------------------------------------------------
@@ -114,7 +106,8 @@ class Instalacion:
     # ---------- verificaciones (rápidas, sin ejecutar Python) ----------
     def python_ok(self) -> bool:
         return (self.py_exe.is_file() and self.pyw_exe.is_file() and any(self.py_dir.glob("python313*.dll"))
-                and (self.py_dir / "DLLs" / "_tkinter.pyd").is_file() and (self.site / "pip").is_dir())
+                and (self.py_dir / "DLLs" / "_tkinter.pyd").is_file() and (self.py_dir / "tcl").is_dir()
+                and (self.site / "pip").is_dir())
 
     def codigo_ok(self) -> bool:
         return (self.raiz / SCRIPT_APP).is_file() and (self.raiz / "config" / "dependencias_youtube.py").is_file()
@@ -176,62 +169,122 @@ class Instalacion:
         finally:
             self.proc_actual = None
 
-    # ---------- Python portable completo (NuGet) ----------
-    def _versiones_python(self) -> list:
+    # ---------- Python portable completo (componentes oficiales de python.org) ----------
+    def _log(self, texto: str) -> None:
         try:
-            with urllib.request.urlopen(urllib.request.Request(NUGET_INDICE, headers={"User-Agent": "YouTubeMp3-Instalador"}),
+            self.cache.mkdir(parents=True, exist_ok=True)
+            with open(self.cache / "instalador.log", "a", encoding="utf-8") as f:
+                f.write(time.strftime("%Y-%m-%d %H:%M:%S") + "  " + texto + "\n")
+        except OSError:
+            pass
+
+    def faltantes_python(self) -> list:
+        """Qué le falta al Python instalado (para mostrar un error claro)."""
+        pedidos = [("python.exe", self.py_exe), ("pythonw.exe", self.pyw_exe),
+                   ("DLLs\\_tkinter.pyd (Tkinter)", self.py_dir / "DLLs" / "_tkinter.pyd"),
+                   ("tcl (Tkinter)", self.py_dir / "tcl"), ("pip", self.site / "pip")]
+        falta = [n for n, ruta in pedidos if not ruta.exists()]
+        if not any(self.py_dir.glob("python313*.dll")):
+            falta.append("python313.dll")
+        return falta
+
+    def _versiones_python(self) -> list:
+        """Versiones 3.13.x publicadas en python.org, de la más nueva a la más vieja."""
+        try:
+            with urllib.request.urlopen(urllib.request.Request(PY_FTP, headers={"User-Agent": "YouTubeMp3-Instalador"}),
                                         timeout=30) as r:
-                lista = elegir_versiones_python(json.loads(r.read().decode("utf-8")))
+                html = r.read().decode("utf-8", errors="replace")
+            lista = sorted({m for m in re.findall(r'href="(' + re.escape(PY_SERIE) + r'\.\d+)/"', html)},
+                           key=clave_version, reverse=True)
             if lista:
                 return lista
-        except (OSError, ValueError):
+        except OSError:
             pass
         return PY_RESPALDO
 
-    def extraer_python(self, paquete: Path) -> None:
-        """El .nupkg es un zip: el Python completo está en la carpeta 'tools'."""
+    def _normalizar_extraccion(self) -> None:
+        """Si msiexec dejó los archivos dentro de una subcarpeta, se suben a la raíz de python."""
+        if self.py_exe.is_file():
+            return
+        for exe in self.py_dir.rglob("python.exe"):
+            origen = exe.parent
+            for hijo in list(origen.iterdir()):
+                destino = self.py_dir / hijo.name
+                if not destino.exists():
+                    shutil.move(str(hijo), str(destino))
+            break
+
+    def extraer_msi(self, layout: Path, avance: Callable[[str], None]) -> None:
+        """Descomprime los componentes (.msi) con 'msiexec /a' (instalación administrativa: solo extrae, no registra nada)."""
+        msis = {p.name.lower(): p for p in layout.rglob("*.msi")}
+        faltan = [n for n in MSI_NECESARIOS if n not in msis]
+        if faltan:
+            raise RuntimeError("El instalador de Python no entregó estos componentes: " + ", ".join(faltan))
         if self.py_dir.exists():
             shutil.rmtree(self.py_dir, ignore_errors=True)
-        base = self.py_dir.resolve()
-        with zipfile.ZipFile(paquete) as z:
-            for info in z.infolist():
-                partes = Path(info.filename).parts
-                if len(partes) < 2 or partes[0] != "tools" or info.is_dir():
-                    continue
-                destino = base.joinpath(*partes[1:]).resolve()
-                if base not in destino.parents:
-                    continue
-                destino.parent.mkdir(parents=True, exist_ok=True)
-                with z.open(info) as o, open(destino, "wb") as f:
-                    shutil.copyfileobj(o, f)
+        self.py_dir.mkdir(parents=True, exist_ok=True)
+        for n in MSI_NECESARIOS:
+            avance(f"📦 Descomprimiendo Python ({n})...")
+            r = self._correr(["msiexec", "/a", str(msis[n]), "/qn", "/norestart", f"TARGETDIR={self.py_dir}"])
+            self._log(f"msiexec /a {n} -> {r.returncode} {r.stdout[-300:]}")
+            if r.returncode not in (0, 3010):
+                raise RuntimeError(f"msiexec falló con {n} (código {r.returncode}):\n" + r.stdout[-1200:])
+        self._normalizar_extraccion()
+        # los .msi administrativos dejan una copia de sí mismos junto a los archivos: se borra
+        for m in self.py_dir.glob("*.msi"):
+            m.unlink(missing_ok=True)
+
+    def instalar_silencioso(self, exe: Path, avance: Callable[[str], None]) -> None:
+        """Plan B: el instalador oficial en modo silencioso, solo para este usuario y en la carpeta del programa."""
+        avance("📦 Instalando Python (plan B)...")
+        if self.py_dir.exists():
+            shutil.rmtree(self.py_dir, ignore_errors=True)
+        r = self._correr([str(exe), "/quiet", "InstallAllUsers=0", f"TargetDir={self.py_dir}", "Include_launcher=0",
+                          "Include_test=0", "Include_doc=0", "Include_dev=0", "Include_tcltk=1", "Include_pip=1",
+                          "Shortcuts=0", "AssociateFiles=0", "PrependPath=0", "CompileAll=0"])
+        self._log(f"instalador silencioso -> {r.returncode} {r.stdout[-300:]}")
 
     def instalar_python(self, avance: Callable[[str], None]) -> None:
         desc = self.raiz / "_descargas"
-        paquete = None
+        exe = None
         ultimo = None
-        for v in self._versiones_python()[:6]:
-            destino = desc / f"python.{v}.nupkg"
+        for v in self._versiones_python()[:8]:
+            destino = desc / f"python-{v}-amd64.exe"
             try:
                 avance(f"⬇️ Descargando Python {v}...")
-                self.descargar(NUGET_PAQUETE.format(v=v), destino,
+                self.descargar(PY_EXE_URL.format(v=v), destino,
                                lambda p, v=v: avance(f"⬇️ Descargando Python {v}... {p}%" if p is not None else f"⬇️ Descargando Python {v}..."))
-                paquete = destino
+                exe = destino
                 break
             except urllib.error.HTTPError as e:
                 ultimo = e
-                if e.code != 404:
+                if e.code != 404:                       # 404: esa versión no tiene instalador de Windows, se prueba la anterior
                     raise
-        if paquete is None:
-            raise RuntimeError(f"No se encontró Python {PY_SERIE} en NuGet ({ultimo})")
-        avance("📦 Descomprimiendo Python...")
-        self.extraer_python(paquete)
-        if not (self.site / "pip").is_dir():
-            avance("📦 Instalando pip...")
-            r = self._correr([str(self.py_exe), "-m", "ensurepip", "--upgrade", "--default-pip"], cwd=str(self.py_dir))
-            if r.returncode != 0:
-                raise RuntimeError("No se pudo instalar pip:\n" + r.stdout[-1500:])
+        if exe is None:
+            raise RuntimeError(f"No se encontró el instalador de Python {PY_SERIE} en python.org ({ultimo})")
+        error = None
+        try:
+            avance("📦 Preparando los componentes de Python (puede tardar un minuto)...")
+            layout = desc / "layout"
+            r = self._correr([str(exe), "/layout", str(layout), "/quiet"])
+            self._log(f"layout -> {r.returncode} {r.stdout[-300:]}")
+            self.extraer_msi(layout, avance)
+            if not (self.site / "pip").is_dir():
+                avance("📦 Instalando pip...")
+                r = self._correr([str(self.py_exe), "-m", "ensurepip", "--upgrade", "--default-pip"], cwd=str(self.py_dir))
+                self._log(f"ensurepip -> {r.returncode} {r.stdout[-300:]}")
+        except (OSError, RuntimeError) as e:
+            if isinstance(e, RuntimeError) and "cancelado" in str(e):
+                raise
+            error = e
+            self._log(f"método 1 falló: {e}")
+        if error is not None or not self.python_ok():
+            self._log(f"faltan tras el método 1: {self.faltantes_python()}")
+            self.instalar_silencioso(exe, avance)
         if not self.python_ok():
-            raise RuntimeError("El Python bajado está incompleto (falta Tkinter o pip).")
+            raise RuntimeError("El Python quedó incompleto. Falta: " + ", ".join(self.faltantes_python())
+                               + (f"\nDetalle: {error}" if error else "")
+                               + f"\n(El registro está en {self.cache / 'instalador.log'})")
         shutil.rmtree(desc, ignore_errors=True)
 
     # ---------- código ----------
