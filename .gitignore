@@ -1,0 +1,24 @@
+# Datos personales y generados por el programa (no se suben)
+config/config_app.json
+memoria.json
+descargas_hechas.json
+config/cola_pendiente.json
+config/ultimo_chequeo_ytdlp.txt
+
+# Carpetas pesadas o locales
+musica/
+ffmpeg/
+cache_yt_dlp/
+dependencias_offline/
+backup_*/
+instalador/
+
+# Python
+__pycache__/
+*.pyc
+
+# Audio y temporales
+*.mp3
+*.part
+*.ytdl
+.dsh_normalizando_*

@@ -1,0 +1,10 @@
+# Dependencias de YouTube IA Downloader (misma lista que config/dependencias_youtube.py)
+yt-dlp
+curl_cffi
+librosa
+numpy
+soundfile
+scipy
+rapidfuzz
+ytmusicapi
+# FFmpeg va en la carpeta ffmpeg/ y Firefox se instala aparte: no son paquetes de pip.
