@@ -4,19 +4,14 @@ config/dependencias_youtube.py
 Lista compartida de dependencias del YouTube Mp3.
 
 Vive adentro de la carpeta "config" a propósito, para que no quede un
-.py suelto al lado de youtube_Mp3.pyw / descargar_dependencias_youtube.py
+.py suelto al lado de youtube_Mp3.pyw
 que se pueda llegar a ejecutar por error con un doble click.
 
-La usan dos programas distintos, que la cargan por ruta directa (no con
-un "import" normal, porque este archivo no está en la misma carpeta que
-ellos) -- ver _cargar_lista_dependencias() en cada uno:
-  - youtube_Mp3.pyw, al arrancar (VentanaVerificacion), para
-    verificar/instalar lo que falte (primero intenta desde la carpeta
-    "dependencias_offline", después con internet -- ver
-    _intentar_instalar en ese archivo).
-  - descargar_dependencias_youtube.py, para precargar todas estas
-    dependencias en la carpeta "dependencias_offline" y así no depender
-    de internet la próxima vez que haga falta instalar algo.
+La usa youtube_Mp3.pyw al arrancar (VentanaVerificacion), que la carga por
+ruta directa (no con un "import" normal, porque este archivo no está en la
+misma carpeta) para verificar/instalar lo que falte (primero intenta desde la
+carpeta "dependencias_offline", después con internet -- ver
+_intentar_instalar en ese archivo).
 
 Mantener esta lista en UN solo lugar evita que el downloader y el
 descargador se desincronicen entre sí. Si el día de mañana el
@@ -50,5 +45,5 @@ DEPENDENCIAS = [
 ]
 
 if __name__ == "__main__":
-    print("Este archivo es solo una lista de datos que usan youtube_Mp3.pyw "
-          "y descargar_dependencias_youtube.py -- no hace falta ejecutarlo directamente.")
+    print("Este archivo es solo una lista de datos que usa youtube_Mp3.pyw "
+          "-- no hace falta ejecutarlo directamente.")

@@ -20,7 +20,7 @@ y crea un acceso directo en el Escritorio. Más detalle en [instalador/_archivos
 - Windows con Python 3.10 o superior.
 - ffmpeg (carpeta `ffmpeg/` junto al programa).
 - Dependencias: `pip install -r requirements.txt`  
-  (o ejecutar `descargar_dependencias_youtube.py`).
+  (el programa también las instala solo al abrirse).
 
 ## Uso
 Ejecutar `youtube_Mp3.pyw` (doble clic).
